@@ -314,37 +314,7 @@ def security_gate():
 
 def security_dashboard():
     st.title("🔐 Security Dashboard")
-    feature_path = "encodings/feature.csv"
-
-    if not os.path.exists(feature_path):
-        st.warning("Feature data file not found. Creating a new one...")
-        columns = ["Name", "Phone"] + [f"Feature_{i+1}" for i in range(8)]
-        df = pd.DataFrame(columns=columns)
-        os.makedirs(os.path.dirname(feature_path), exist_ok=True)
-        df.to_csv(feature_path, index=False)
-
     data = load_encodings()
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Total Registered Users", len([n for n in data["names"] if n != SECURITY_NAME]))
-    with col2:
-        total_blacklisted = len(data["blacklist_metadata"])
-        visitor_blacklisted = sum(1 for x in data["blacklist_metadata"] if x.get("type") == "visitor")
-        user_blacklisted = total_blacklisted - visitor_blacklisted
-
-        st.header("Total Blacklisted Users")
-        st.metric("Total Blacklisted Users", st.session_state.total_blacklisted_users)
-        with st.expander("View Details"):  
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric(label="🚫 Visitors Blocked", value=st.session_state.visitors_blocked)
-            with col2:
-                st.metric(label="⛔ Registered Users Blocked", value=st.session_state.registered_users_blocked)
-    with col3:
-        today_logs = LOGS_DIR / datetime.now().strftime("%Y-%m/%d") / "logs.txt"
-        count = len(today_logs.read_text().splitlines()) if today_logs.exists() else 0
-        st.metric("Today's Entries", count)
-
     with st.expander("➕ Register New User"):
         with st.form("registration_form"):
             name = st.text_input("Full Name", key="reg_name")
@@ -521,10 +491,30 @@ def security_dashboard():
         else:
             st.info("No blacklisted persons")
     with st.expander("📊 Access Logs Analytics"):
-        # Date selection with default to today
+        col1, col2, col3 = st.columns(3)
+            
+        with col1:
+            registered_users = len([n for n in data["names"] if n != SECURITY_NAME])
+            st.metric("Total Registered Users", registered_users)
+        
+        with col2:
+            total_blacklisted = len(data["blacklist_metadata"])
+            st.metric("Total Blacklisted Users", total_blacklisted)
+        
+        with col3:
+            today = datetime.now().strftime("%Y-%m-%d")
+            today_logs = LOGS_DIR / today / "logs.xlsx"
+            if today_logs.exists():
+                df = pd.read_excel(today_logs)
+                count = len(df)
+            else:
+                count = 0
+            st.metric("Today's Entries", count)
+
         selected_date = st.date_input("Select date", datetime.today())
-        date_path = LOGS_DIR / selected_date.strftime("%Y-%m/%d")
+        date_path = LOGS_DIR / selected_date.strftime("%Y-%m-%d")  # Use hyphens for directory structure
         log_file = date_path / "logs.xlsx"
+
         if log_file.exists():
             df = pd.read_excel(log_file)
 
@@ -621,19 +611,6 @@ def security_dashboard():
 
         else:
             st.info("No logs available for selected date")
-
-    # Real-time Monitoring Section
-    with st.expander("🔍 Live Gate Monitoring"):
-        st.write("### Last 5 Entries")
-        if (LOGS_DIR / datetime.now().strftime("%Y-%m/%d") / "logs.txt").exists():
-            last_lines = "\n".join((LOGS_DIR / datetime.now().strftime("%Y-%m/%d") / "logs.txt").read_text().splitlines()[-5:])
-            if last_lines:
-                st.code(last_lines)
-            else:
-                st.info("No entries yet today")
-        else:
-            st.info("No live data available")
-
 # --- Main Application Flow ---
 security_gate()
 
