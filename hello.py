@@ -18,6 +18,7 @@ import requests
 import os
 import pandas as pd
 import numpy as np
+PORT = int(os.environ.get("PORT", 10000))
 # Initialize session state
 if 'capture' not in st.session_state:
     st.session_state.capture = False
