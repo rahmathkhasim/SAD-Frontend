@@ -62,6 +62,10 @@ SECURITY_EMAIL = "rahmathmohd1654@gmail.com"  # Replace with your Gmail
 # FastAPI Backend URL (updated with your IPv4 address)
 FASTAPI_URL = "https://sad-pvly.onrender.com"
 
+model_dir = os.path.expanduser("~/.insightface/models/buffalo_l")
+
+if not os.path.exists(model_dir):
+    os.makedirs(model_dir, exist_ok=True)
 arcface = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
 arcface.prepare(ctx_id=0) 
 # Create directories
