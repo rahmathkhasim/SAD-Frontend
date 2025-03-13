@@ -1,6 +1,6 @@
 streamlit>=1.29.0  # Versions after 1.29.0 support Pillow 10+
 pillow>=10.0.0
-opencv-python==4.8.0.76
+opencv-python-headless
 pandas>=2.0.0
 insightface==0.7.3
 requests==2.31.0
