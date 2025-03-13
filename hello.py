@@ -62,8 +62,8 @@ SECURITY_EMAIL = "rahmathmohd1654@gmail.com"  # Replace with your Gmail
 # FastAPI Backend URL (updated with your IPv4 address)
 FASTAPI_URL = "https://sad-pvly.onrender.com"
 
-arcface = FaceAnalysis(name='buffalo_l')  # 'buffalo_l' is a pre-trained ArcFace model
-arcface.prepare(ctx_id=1) 
+arcface = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
+arcface.prepare(ctx_id=0) 
 # Create directories
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 Path("encodings").mkdir(exist_ok=True)
