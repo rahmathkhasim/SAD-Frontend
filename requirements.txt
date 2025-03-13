@@ -5,5 +5,4 @@ insightface
 pickle-mixin
 pandas
 requests
-smtplib
 email
