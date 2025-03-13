@@ -1,9 +1,8 @@
 streamlit==1.26.0
 opencv-python==4.8.0.76
-numpy==1.23.5
 pandas==1.5.3
 insightface==0.7.3
 requests==2.31.0
 python-dotenv==1.0.0
 protobuf==3.20.3
-onnxruntime==1.17.0  
+onnxruntime==1.17.0
