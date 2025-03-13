@@ -318,13 +318,9 @@ def security_dashboard():
 
     if not os.path.exists(feature_path):
         st.warning("Feature data file not found. Creating a new one...")
-
-        # Create an empty DataFrame with column names
         columns = ["Name", "Phone"] + [f"Feature_{i+1}" for i in range(8)]
         df = pd.DataFrame(columns=columns)
-
-        # Save the empty DataFrame to CSV
-        os.makedirs(os.path.dirname(feature_path), exist_ok=True)  # Ensure directory exists
+        os.makedirs(os.path.dirname(feature_path), exist_ok=True)
         df.to_csv(feature_path, index=False)
 
     data = load_encodings()
@@ -415,136 +411,115 @@ def security_dashboard():
     with st.expander("🚫 Manage Blacklist"):
         data = load_encodings()
         
-        # Section 1: Blacklist Existing Users
         st.subheader("Add to Blacklist")
-        registered_users = [(name, phone) for name, phone in zip(data["names"], data["phones"]) 
-                          if name != SECURITY_NAME and name not in [x["name"] for x in data["blacklist_metadata"]]]
-        
+        registered_users = [(name, phone) for name, phone in zip(data["names"], data["phones"]) if name != SECURITY_NAME]
         if registered_users:
-            user_options = [f"{name} ({phone})" for name, phone in registered_users]
-            selected_user = st.selectbox("Select user to blacklist", user_options)
+            user_options_display = [f"{name} ({phone})" for name, phone in registered_users]
+            selected_index = st.selectbox(
+                "Select user to blacklist", 
+                range(len(registered_users)), 
+                format_func=lambda x: user_options_display[x]
+            )
+            selected_name, selected_phone = registered_users[selected_index]
             
         if st.button("🚫 Blacklist Selected User"):
-            # Find the selected user's index in registered_users
-            index = user_options.index(selected_user)
-            user_name, user_phone = registered_users[index]
+            exact_index = next((i for i, (n, p) in enumerate(zip(data["names"], data["phones"])) 
+                        if n == selected_name and p == selected_phone), None)
 
-            # Find the exact index in the original dataset
-            original_indices = [i for i, (n, p) in enumerate(zip(data["names"], data["phones"])) if n == user_name and p == user_phone]
-            
-            if not original_indices:
-                st.error("Error: User not found in the database.")
+            if exact_index is None:
+                st.error("User not found in database")
                 st.stop()
 
-            original_index = original_indices[0]  # Use first match safely
-
-            # Get the correct image path
-            original_image_path = data["image_paths"][original_index] if original_index < len(data["image_paths"]) else None
+            # Get the image path from the exact index
+            original_image_path = data["image_paths"][exact_index] if exact_index < len(data["image_paths"]) else None
 
             if original_image_path and os.path.exists(original_image_path):
-                blacklist_image_path = BLACKLIST_IMAGES_DIR / Path(original_image_path).name
+                # Move the image to the blacklist folder
+                blacklist_user_dir = BLACKLIST_IMAGES_DIR / "user"
+                blacklist_user_dir.mkdir(parents=True, exist_ok=True)
+                blacklist_image_path = blacklist_user_dir / Path(original_image_path).name
                 os.rename(original_image_path, blacklist_image_path)
-                st.success(f"Moved {user_name}'s photo to blacklist.")
             else:
-                st.warning(f"⚠️ Image path missing or file not found for {user_name}")
-                blacklist_image_path = None  
+                st.warning("Image file not found, proceeding without image")
+                blacklist_image_path = None
 
-            # Store in blacklist metadata
+            # Add user to blacklist metadata
             data["blacklist_metadata"].append({
-                "name": user_name,
-                "phone": user_phone,
-                "email": data["emails"][original_index],
+                "name": selected_name,
+                "phone": selected_phone,
+                "email": data["emails"][exact_index],
                 "image_path": str(blacklist_image_path) if blacklist_image_path else None,
-                "blacklisted_at": datetime.now().isoformat(),
-                "type": "user"
+                "type": "user",
+                "blacklisted_at": datetime.now().isoformat()
             })
+            data["blacklist"].append(data["encodings"][exact_index])
 
-            # Move encoding to blacklist
-            data["blacklist"].append(data["encodings"][original_index])
-
-            # Remove from regular lists
-            del data["names"][original_index]
-            del data["phones"][original_index]
-            del data["emails"][original_index]
-            del data["encodings"][original_index]
-            if original_index < len(data["image_paths"]):
-                del data["image_paths"][original_index]
+            # Remove user from original lists
+            for key in ["names", "phones", "emails", "encodings", "image_paths"]:
+                if exact_index < len(data[key]):
+                    del data[key][exact_index]
 
             save_encodings(data)
             update_blacklist_counts(data["blacklist_metadata"])
-            st.success(f"{user_name} blacklisted successfully!")
             st.rerun()
 
-        else:
-            st.info("No registered users available for blacklisting")
-
-        # Section 2: Existing Blacklist Management
         st.subheader("Current Blacklist")
         if data["blacklist_metadata"]:
-            # Create list of blacklisted persons with name and phone
-            blacklist_options = [f"{entry['name']} ({entry['phone']})" 
-                            for entry in data["blacklist_metadata"]]
-            
-            selected_entry = st.selectbox("Select blacklisted person to remove", blacklist_options)
+            blacklist_options_display = [f"{entry['name']} ({entry['phone']})" for entry in data["blacklist_metadata"]]
+            selected_index = st.selectbox(
+                "Select blacklisted person to remove", 
+                range(len(data["blacklist_metadata"])), 
+                format_func=lambda x: blacklist_options_display[x]
+            )
+            selected_entry = data["blacklist_metadata"][selected_index]
+            sel_name = selected_entry['name']
+            sel_phone = selected_entry['phone']
             
             if st.button("Remove from Blacklist"):
-                # Find the index of selected entry
-                index = blacklist_options.index(selected_entry)
-                blacklisted_entry = data["blacklist_metadata"][index]
+                meta_index = next((i for i, entry in enumerate(data["blacklist_metadata"]) 
+                                if entry["name"] == sel_name and entry["phone"] == sel_phone), None)
 
-                visitor_name = blacklisted_entry["name"]
-                visitor_phone = blacklisted_entry["phone"]
-                visitor_type = blacklisted_entry.get("type", "")
+                if meta_index is None:
+                    st.error("Entry not found in blacklist")
+                    st.stop()
 
-                if visitor_type == "visitor":
-                    visitor_image_path = blacklisted_entry.get("image_path")
-                    if visitor_image_path and os.path.exists(visitor_image_path):
-                        os.remove(visitor_image_path)
+                entry = data["blacklist_metadata"][meta_index]
+                original_image_path = entry.get("image_path")
 
-                    st.success(f"Visitor {visitor_name} has been removed from the blacklist.")
-                
-                else:  # Registered user
-                    original_email = blacklisted_entry["email"]
-                    original_image_path = blacklisted_entry.get("image_path")
-                    Path("user_images").mkdir(parents=True, exist_ok=True)
-                    # Move the image back to user_images folder
-                    original_image_path = blacklisted_entry.get("image_path")
+                if entry["type"] == "user":
+                    # Restore user data
+                    data["names"].append(entry["name"])
+                    data["phones"].append(entry["phone"])
+                    data["emails"].append(entry["email"])
+                    data["encodings"].append(data["blacklist"][meta_index])
 
+                    # Restore image if exists
                     if original_image_path and os.path.exists(original_image_path):
-                        user_image_path = Path("user_images") / Path(original_image_path).name
-                        os.rename(original_image_path, user_image_path)
-                        st.success(f"✅ Image restored to {user_image_path}")
-                    else:
-                        st.warning(f"⚠️ Image not found in blacklist folder: {original_image_path}")
-                        user_image_path = None  # Prevent crash if file is missing
+                        restore_date = datetime.now().strftime("%Y-%m-%d")
+                        restore_dir = Path("user_images") / restore_date
+                        restore_dir.mkdir(parents=True, exist_ok=True)
+                        new_path = restore_dir / Path(original_image_path).name
+                        os.rename(original_image_path, new_path)
+                        data["image_paths"].append(str(new_path))
 
-
-                    # Restore user details
-                    data["names"].append(visitor_name)
-                    data["phones"].append(visitor_phone)
-                    data["emails"].append(original_email)
-                    original_encoding = data["blacklist"][index]
-                    data["encodings"].append(original_encoding)
-                    if user_image_path:
-                        data["image_paths"].append(str(user_image_path))
-
-                    st.success(f"Registered user {visitor_name} has been restored with their original email: {original_email}.")
                 # Remove from blacklist
-                del data["blacklist_metadata"][index]
-                # Save updated encodings
+                del data["blacklist_metadata"][meta_index]
+                del data["blacklist"][meta_index]
+
                 save_encodings(data)
                 update_blacklist_counts(data["blacklist_metadata"])
                 st.rerun()
+            
             st.markdown("### Blacklisted Persons:")
             for entry in data["blacklist_metadata"]:
                 st.write(f"""
                 - **Name**: {entry['name']}  
-                  **Phone**: {entry['phone']}  
-                  **Blacklisted**: {datetime.fromisoformat(entry.get('blacklisted_at', datetime.now().isoformat())).strftime('%Y-%m-%d %H:%M')}
+                **Phone**: {entry['phone']}  
+                **Type**: {entry.get('type', 'user').title()}  
+                **Blacklisted**: {datetime.fromisoformat(entry.get('blacklisted_at', datetime.now().isoformat())).strftime('%Y-%m-%d %H:%M')}
                 """)
         else:
             st.info("No blacklisted persons")
-
     with st.expander("📊 Access Logs Analytics"):
         # Date selection with default to today
         selected_date = st.date_input("Select date", datetime.today())
@@ -751,8 +726,13 @@ if st.session_state.pending_request:
             st.error("You have been blacklisted")
             data = load_encodings()
             visitor_image_path = save_image(image, visitor_name, visitor_phone, is_registered=False)
-            blacklist_image_path = BLACKLIST_IMAGES_DIR / Path(visitor_image_path).name
+            
+            # Add this block to organize blacklisted visitor images
+            blacklist_visitor_dir = BLACKLIST_IMAGES_DIR / "visitor"
+            blacklist_visitor_dir.mkdir(parents=True, exist_ok=True)
+            blacklist_image_path = blacklist_visitor_dir / Path(visitor_image_path).name
             os.rename(visitor_image_path, blacklist_image_path)
+            
             data["blacklist"].append(st.session_state.unrecognized_face)  # Store encoding
             data["blacklist_metadata"].append({  # Store metadata
                 "name": status["visitor_name"],
