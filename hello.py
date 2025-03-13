@@ -68,9 +68,9 @@ model_dir = os.path.expanduser("~/.insightface/models/buffalo_l")
 if not os.path.exists(model_dir):
     os.makedirs(model_dir, exist_ok=True)
 download('models', 'buffalo_l', force=True, root='~/.insightface')
-download('models', 'scrfd_10g_bnkps', force=True, root='~/.insightface')
+download('models', 'scrfd_2.5g_bnkps', force=True, root='~/.insightface')
 arcface = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
-arcface.prepare(ctx_id=0) 
+arcface.prepare(ctx_id=0,, det_model='scrfd_2.5g_bnkps') 
 # Create directories
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 Path("encodings").mkdir(exist_ok=True)
