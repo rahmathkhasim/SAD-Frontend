@@ -18,6 +18,7 @@ import requests
 import os
 import pandas as pd
 import numpy as np
+from insightface.utils.storage import download
 PORT = int(os.environ.get("PORT", 10000))
 # Initialize session state
 if 'capture' not in st.session_state:
@@ -66,6 +67,8 @@ model_dir = os.path.expanduser("~/.insightface/models/buffalo_l")
 
 if not os.path.exists(model_dir):
     os.makedirs(model_dir, exist_ok=True)
+download('models', 'buffalo_l', force=True, root='~/.insightface')
+download('models', 'scrfd_10g_bnkps', force=True, root='~/.insightface')
 arcface = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
 arcface.prepare(ctx_id=0) 
 # Create directories
