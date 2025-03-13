@@ -162,7 +162,6 @@ def log_visit(name, phone, action="visit", approver="system"):
         updated_logs = new_entry
 
     updated_logs.to_excel(log_file, index=False)
-
 def get_registered_residents():
     data = load_encodings()
     return [(name, phone, email) for name, phone, email in zip(data["names"], data["phones"], data["emails"]) 
@@ -428,7 +427,7 @@ def security_dashboard():
             for key in ["names", "phones", "emails", "encodings", "image_paths"]:
                 if exact_index < len(data[key]):
                     del data[key][exact_index]
-
+            log_visit(selected_name, selected_phone, "blacklisted", "Security")
             save_encodings(data)
             update_blacklist_counts(data["blacklist_metadata"])
             st.rerun()
@@ -530,43 +529,31 @@ def security_dashboard():
             st.subheader("📈 Security Analytics")
 
             # Metrics Row 1
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3 = st.columns(3)
             with col1:
                 # Repeat visitors calculation
                 visitor_counts = df['Visitor Name'].value_counts()
                 repeat_visitors = (visitor_counts > 1).sum()
                 st.metric("🔁 Repeat Visitors", repeat_visitors)
-
             with col2:
-                # Average visits per visitor
-                unique_visitors = df['Visitor Name'].nunique()
-                avg_visits = len(df)/unique_visitors if unique_visitors > 0 else 0
-                st.metric("📊 Avg Visits/Visitor", f"{avg_visits:.1f}")
-
-            with col3:
                 # Blacklist attempts
-                blacklist_attempts = len(df[df['Action Type'].isin(['denied', 'blacklisted'])])
+                blacklist_attempts = len(df[df['Action Type'].isin(['denied', 'blocked_attempt'])])
                 st.metric("🚫 Blocked Attempts", blacklist_attempts)
 
-            with col4:
+            with col3:
                 # Approval rate
                 approved = len(df[df['Action Type'] == 'approved'])
                 st.metric("✅ Approved Entries", approved)
 
             # Metrics Row 2
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3 = st.columns(3)
             with col1:
                 denied = len(df[df['Action Type'] == 'denied'])
                 st.metric("❌ Denied Entries", denied)
-            
             with col2:
-                blacklisted = len(df[df['Action Type'] == 'blacklisted'])
-                st.metric("⛔ Blacklisted Entries", blacklisted)
-            
-            with col3:
                 st.metric("👥 Total Visitors", df['Visitor Name'].nunique())
             
-            with col4:
+            with col3:
                 st.metric("📝 Total Entries", len(df))
 
             # Visitor Trends and Peak Hours
@@ -614,7 +601,9 @@ def security_dashboard():
 # --- Main Application Flow ---
 security_gate()
 
-st.title("Face Recognition System 👤")
+if not st.session_state.get('security_recognized'):
+    st.title("Face Recognition System 👤")
+
 if st.session_state.get('security_recognized'):
     security_dashboard()
     st.stop()
@@ -634,7 +623,10 @@ if st.session_state.capture:
             
             # Replace arcface.calc_sim with cosine_similarity
             blacklist_matches = [cosine_similarity(face_encoding, bl_enc) > 0.6 for bl_enc in data["blacklist"]]
-            if any(blacklist_matches):  # Use 'any()' instead of 'True in ...'
+            if any(blacklist_matches):
+                bl_index = blacklist_matches.index(True)
+                bl_entry = data["blacklist_metadata"][bl_index]
+                log_visit(bl_entry['name'], bl_entry['phone'], "blocked_attempt", "system")
                 st.error("🚫 Access Denied - You are permanently blacklisted!")
                 st.session_state.capture = False
             else:
@@ -693,13 +685,15 @@ if st.session_state.pending_request:
             st.session_state.pending_request = None
             st.session_state.capture = False
         elif status["status"] == "denied":
+            log_visit(status["visitor_name"], status["visitor_phone"], "denied", status["resident_email"])
             st.error("Access denied by resident")
             st.session_state.pending_request = None
             st.session_state.capture = False
             if "image_path" in st.session_state:
-                os.remove(st.session_state.image_path)  
-                del st.session_state.image_path 
+                os.remove(st.session_state.image_path)
+                del st.session_state.image_path # Remove image path from session state
         elif status["status"] == "blacklisted":
+            log_visit(status["visitor_name"], status["visitor_phone"], "blacklisted", status["resident_email"])
             st.error("You have been blacklisted")
             data = load_encodings()
             visitor_image_path = save_image(image, visitor_name, visitor_phone, is_registered=False)
