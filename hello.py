@@ -70,7 +70,7 @@ if not os.path.exists(model_dir):
 
 # Initialize FaceAnalysis
 arcface = FaceAnalysis(providers=['CPUExecutionProvider'])
-arcface.prepare(ctx_id=0, det_model=f"{model_dir}/det_500m.onnx")  # Use full path
+arcface.prepare(ctx_id=0) # Use full path
 
 # Create directories
 LOGS_DIR = Path("logs")
