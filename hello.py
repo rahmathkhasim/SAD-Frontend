@@ -1,6 +1,5 @@
 import streamlit as st
 import cv2
-import glob 
 import numpy as np
 import pickle
 from pathlib import Path
@@ -18,8 +17,6 @@ import requests
 import os
 import pandas as pd
 import numpy as np
-from insightface.utils.storage import download
-PORT = int(os.environ.get("PORT", 10000))
 # Initialize session state
 if 'capture' not in st.session_state:
     st.session_state.capture = False
@@ -61,24 +58,16 @@ SMTP_PASSWORD = "hxuk kloj vhdb xooh"    # Replace with your Gmail app password
 SECURITY_EMAIL = "rahmathmohd1654@gmail.com"  # Replace with your Gmail
 
 # FastAPI Backend URL (updated with your IPv4 address)
-model_dir = "models"
-os.environ["INSIGHTFACE_HOME"] = model_dir
+FASTAPI_URL = "https://sad-pvly.onrender.com"
 
-# Create models directory if not exists
-if not os.path.exists(model_dir):
-    os.makedirs(model_dir, exist_ok=True)
-
-# Initialize FaceAnalysis
-arcface = FaceAnalysis(providers=['CPUExecutionProvider'])
-arcface.prepare(ctx_id=0) # Use full path
-
+arcface = FaceAnalysis(name='buffalo_l')  # 'buffalo_l' is a pre-trained ArcFace model
+arcface.prepare(ctx_id=1) 
 # Create directories
-LOGS_DIR = Path("logs")
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
-
-Path("encodings").mkdir(parents=True, exist_ok=True)
+Path("encodings").mkdir(exist_ok=True)
 BLACKLIST_IMAGES_DIR = Path("blacklist_images")
 BLACKLIST_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+
 def cosine_similarity(embedding1, embedding2):
     # Ensure both embeddings are numpy arrays
     e1 = np.array(embedding1)
@@ -636,7 +625,7 @@ if st.session_state.capture:
             if any(blacklist_matches):
                 bl_index = blacklist_matches.index(True)
                 bl_entry = data["blacklist_metadata"][bl_index]
-                log_visit(bl_entry['name'], bl_entry['phone'], "blocked_attempt", "system")
+                log_visit(bl_entry['name'], bl_entry['phone'], "blocked_attempt", "System")
                 st.error("🚫 Access Denied - You are permanently blacklisted!")
                 st.session_state.capture = False
             else:
