@@ -16,7 +16,6 @@ import time
 import requests
 import os
 import pandas as pd
-import numpy as np
 # Initialize session state
 if 'capture' not in st.session_state:
     st.session_state.capture = False
