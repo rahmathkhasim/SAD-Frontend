@@ -1,6 +1,5 @@
 import streamlit as st
 import cv2
-import glob 
 import numpy as np
 import pickle
 from pathlib import Path
@@ -626,7 +625,7 @@ if st.session_state.capture:
             if any(blacklist_matches):
                 bl_index = blacklist_matches.index(True)
                 bl_entry = data["blacklist_metadata"][bl_index]
-                log_visit(bl_entry['name'], bl_entry['phone'], "blocked_attempt", "system")
+                log_visit(bl_entry['name'], bl_entry['phone'], "blocked_attempt", "System")
                 st.error("🚫 Access Denied - You are permanently blacklisted!")
                 st.session_state.capture = False
             else:
