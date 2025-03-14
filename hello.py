@@ -1,8 +1,8 @@
+from pathlib import Path  
 import streamlit as st
 import cv2
 import numpy as np
 import pickle
-from pathlib import Path
 from datetime import datetime
 from insightface.app import FaceAnalysis
 import hashlib
@@ -16,6 +16,7 @@ import time
 import requests
 import os
 import pandas as pd
+
 # Initialize session state
 if 'capture' not in st.session_state:
     st.session_state.capture = False
@@ -31,6 +32,7 @@ if 'full_auth' not in st.session_state:
     st.session_state.full_auth = False
 if 'pending_request' not in st.session_state:
     st.session_state.pending_request = None
+
 # Initialize counts in session state
 def initialize_session_state():
     defaults = {
@@ -43,6 +45,7 @@ def initialize_session_state():
             st.session_state[key] = value
 
 initialize_session_state()
+
 # Configuration
 ENCODINGS_PATH = "encodings/face_encodings.pkl"
 SECURITY_NAME = "Security"
@@ -60,7 +63,8 @@ SECURITY_EMAIL = "rahmathmohd1654@gmail.com"  # Replace with your Gmail
 FASTAPI_URL = "https://sad-pvly.onrender.com"
 
 arcface = FaceAnalysis(name='buffalo_l')  # 'buffalo_l' is a pre-trained ArcFace model
-arcface.prepare(ctx_id=1) 
+arcface.prepare(ctx_id=1)
+
 # Create directories
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 Path("encodings").mkdir(exist_ok=True)
@@ -94,6 +98,31 @@ def load_encodings():
             "blacklist_metadata": [],
             "image_paths": []   # Initialize blacklist_metadata
         }
+def fix_image_paths(data):
+    """
+    Fixes the data["image_paths"] list to ensure it matches the data["names"] and data["phones"] lists.
+    """
+    fixed_data = data.copy()
+    fixed_data["image_paths"] = []
+
+    for i, (name, phone) in enumerate(zip(data["names"], data["phones"])):
+        if name == SECURITY_NAME:
+            fixed_data["image_paths"].append("")  # Skip security
+            continue
+
+        # Generate the expected image path
+        today = datetime.now().strftime("%Y-%m-%d")
+        expected_filename = f"{name}_{phone}.jpg"
+        expected_path = Path("user_images") / today / expected_filename
+
+        # Check if the image exists
+        if expected_path.exists():
+            fixed_data["image_paths"].append(str(expected_path))
+        else:
+            st.warning(f"Image not found for {name} ({phone}). Using placeholder.")
+            fixed_data["image_paths"].append("")  # Use a placeholder
+
+    return fixed_data
 
 def save_image(image, name, phone, is_registered):
     today = datetime.now().strftime("%Y-%m-%d")
@@ -127,9 +156,11 @@ def save_features(name, phone, embedding):
 
     # Save to Excel
     updated_df.to_excel(feature_path, index=False)
+
 def save_encodings(data):
     with open(ENCODINGS_PATH, "wb") as f:
         pickle.dump(data, f)
+
 def update_blacklist_counts(blacklist_metadata):
     """Update session state blacklist counts based on metadata."""
     st.session_state.total_blacklisted_users = len(blacklist_metadata)
@@ -137,11 +168,11 @@ def update_blacklist_counts(blacklist_metadata):
     st.session_state.registered_users_blocked = (
         st.session_state.total_blacklisted_users - st.session_state.visitors_blocked
     )
+
 def detect_and_encode(image):
     rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     faces = arcface.get(rgb_image)
     return faces[0].embedding if faces else None
-
 
 def log_visit(name, phone, action="visit", approver="system"):
     now = datetime.now()
@@ -160,6 +191,7 @@ def log_visit(name, phone, action="visit", approver="system"):
         updated_logs = new_entry
 
     updated_logs.to_excel(log_file, index=False)
+
 def get_registered_residents():
     data = load_encodings()
     return [(name, phone, email) for name, phone, email in zip(data["names"], data["phones"], data["emails"]) 
@@ -312,6 +344,8 @@ def security_gate():
 def security_dashboard():
     st.title("🔐 Security Dashboard")
     data = load_encodings()
+    data = fix_image_paths(data)
+    save_encodings(data) 
     with st.expander("➕ Register New User"):
         with st.form("registration_form"):
             name = st.text_input("Full Name", key="reg_name")
@@ -325,42 +359,42 @@ def security_dashboard():
                     data = load_encodings()
                     duplicate = False
                     face_duplicate = False
-                    
+
                     # Convert captured image to encoding
                     image = cv2.imdecode(np.frombuffer(img_file.getvalue(), np.uint8), cv2.IMREAD_COLOR)
                     new_encoding = detect_and_encode(image)
-                    
+
                     if new_encoding is None:
                         st.error("No face detected in the image. Please ensure proper lighting and face visibility.")
                         st.stop()
                     if any(float(cosine_similarity(new_encoding, enc)) > 0.6 for enc, phone in zip(data["encodings"], data["phones"]) if phone == "SECURITY "):
                         st.error("🛑 Nice try, Mr. Security! You already have VIP access. No need to register again. Go patrol the gates! 😆")
                         st.stop()
-                    
+
                     # Check against existing encodings (excluding security)
                     for i in range(len(data["names"])):
                         if data["names"][i] == SECURITY_NAME:
                             continue
-                        
+
                         # Check personal details
                         if (data["names"][i] == name or 
                             data["phones"][i] == phone or 
                             data["emails"][i] == email):
                             duplicate = True
                             break
-                        
+
                         match = cosine_similarity(data["encodings"][i], new_encoding) > 0.6
                         if match:
                             face_duplicate = True
                             existing_name = data["names"][i]
                             break  # Stop checking once a match is found
 
-                    
                     if duplicate:
                         st.error("❌ User already exists with same name, phone, or email!")
                     elif face_duplicate:
                         st.error(f"❌ Face already registered as {existing_name}!")
                     else:
+                        # Save the image with the correct filename
                         image_path = save_image(image, name, phone, is_registered=True)
                         save_features(name, phone, new_encoding) 
                         data["names"].append(name)
@@ -389,46 +423,73 @@ def security_dashboard():
             )
             selected_name, selected_phone = registered_users[selected_index]
             
-        if st.button("🚫 Blacklist Selected User"):
-            exact_index = next((i for i, (n, p) in enumerate(zip(data["names"], data["phones"])) 
-                        if n == selected_name and p == selected_phone), None)
+            if st.button("🚫 Blacklist Selected User"):
+                # Find the exact index of the selected user in the data
+                exact_index = next((i for i, (n, p) in enumerate(zip(data["names"], data["phones"])) 
+                                if n == selected_name and p == selected_phone), None)
 
-            if exact_index is None:
-                st.error("User not found in database")
-                st.stop()
+                if exact_index is None:
+                    st.error("User not found in database")
+                    st.stop()
 
-            # Get the image path from the exact index
-            original_image_path = data["image_paths"][exact_index] if exact_index < len(data["image_paths"]) else None
+                # Ensure image_paths list is initialized and has the same length as other lists
+                if "image_paths" not in data or len(data["image_paths"]) <= exact_index:
+                    st.error("Image path not found for the selected user. Please ensure the user has a valid image.")
+                    st.stop()
 
-            if original_image_path and os.path.exists(original_image_path):
-                # Move the image to the blacklist folder
+                # Move the user's image to the blacklist folder
+                user_image_path = data["image_paths"][exact_index]
+
+                # Debugging: Print the image path and expected filename
+                st.write(f"Debug: Selected user - {selected_name}, {selected_phone}")
+                st.write(f"Debug: Image path - {user_image_path}")
+                st.write(f"Debug: Expected filename - {selected_name}_{selected_phone}.jpg")
+
+                # Add this validation check
+              # Ensure this import is at the top if not already present
+
+                # Check if the image filename matches the selected user
+                path = Path(user_image_path)
+                expected_filename = f"{selected_name}_{selected_phone}.jpg"
+                if path.name != expected_filename:
+                    st.error(f"❌ Image mismatch! Expected {expected_filename}, found {path.name}. Aborting blacklist.")
+                    st.stop()
+
+                # Continue with the rest of the blacklist logic
                 blacklist_user_dir = BLACKLIST_IMAGES_DIR / "user"
                 blacklist_user_dir.mkdir(parents=True, exist_ok=True)
-                blacklist_image_path = blacklist_user_dir / Path(original_image_path).name
-                os.rename(original_image_path, blacklist_image_path)
-            else:
-                st.warning("Image file not found, proceeding without image")
-                blacklist_image_path = None
+                unique_filename = f"{selected_name}_{selected_phone}_{uuid.uuid4().hex}.jpg"
+                blacklist_image_path = blacklist_user_dir / unique_filename
+                try:
+                    os.rename(user_image_path, blacklist_image_path)
+                except Exception as e:
+                    st.error(f"Error moving image to blacklist folder: {str(e)}")
+                    st.stop()
 
-            # Add user to blacklist metadata
-            data["blacklist_metadata"].append({
-                "name": selected_name,
-                "phone": selected_phone,
-                "email": data["emails"][exact_index],
-                "image_path": str(blacklist_image_path) if blacklist_image_path else None,
-                "type": "user",
-                "blacklisted_at": datetime.now().isoformat()
-            })
-            data["blacklist"].append(data["encodings"][exact_index])
+                # Add user to blacklist metadata
+                data["blacklist_metadata"].append({
+                    "name": selected_name,
+                    "phone": selected_phone,
+                    "email": data["emails"][exact_index],  # Include email for registered users
+                    "image_path": str(blacklist_image_path),  # Update with the new blacklist image path
+                    "type": "user",
+                    "blacklisted_at": datetime.now().isoformat()
+                })
+                data["blacklist"].append(data["encodings"][exact_index])
 
-            # Remove user from original lists
-            for key in ["names", "phones", "emails", "encodings", "image_paths"]:
-                if exact_index < len(data[key]):
-                    del data[key][exact_index]
-            log_visit(selected_name, selected_phone, "blacklisted", "Security")
-            save_encodings(data)
-            update_blacklist_counts(data["blacklist_metadata"])
-            st.rerun()
+                # Remove user from original lists
+                for key in ["names", "phones", "emails", "encodings", "image_paths"]:
+                    if exact_index < len(data[key]):
+                        del data[key][exact_index]
+
+                # Log the blacklisting action
+                log_visit(selected_name, selected_phone, "blacklisted", "Security")
+
+                # Save the updated data
+                save_encodings(data)
+                update_blacklist_counts(data["blacklist_metadata"])
+                st.success(f"User {selected_name} has been blacklisted successfully!")
+                st.rerun()
 
         st.subheader("Current Blacklist")
         if data["blacklist_metadata"]:
@@ -441,8 +502,14 @@ def security_dashboard():
             selected_entry = data["blacklist_metadata"][selected_index]
             sel_name = selected_entry['name']
             sel_phone = selected_entry['phone']
-            
-            if st.button("Remove from Blacklist"):
+
+            # Display the blacklisted person's image
+            if selected_entry.get("image_path") and os.path.exists(selected_entry["image_path"]):
+                st.image(selected_entry["image_path"], caption=f"{sel_name} ({sel_phone})", width=200)
+            else:
+                st.warning("No image found for this blacklisted person.")
+
+            if st.button("Remove from Blacklist", key="remove_blacklist_1"):
                 meta_index = next((i for i, entry in enumerate(data["blacklist_metadata"]) 
                                 if entry["name"] == sel_name and entry["phone"] == sel_phone), None)
 
@@ -451,30 +518,62 @@ def security_dashboard():
                     st.stop()
 
                 entry = data["blacklist_metadata"][meta_index]
-                original_image_path = entry.get("image_path")
 
-                if entry["type"] == "user":
-                    # Restore user data
+                # Handle user vs visitor removal
+                if entry.get("type") == "user":
+                    # Move the user's image back to the user_images folder
+                    if os.path.exists(entry["image_path"]):
+                        try:
+                            # Define the user_images folder path
+                            today = datetime.now().strftime("%Y-%m-%d")
+                            user_images_dir = Path("user_images") / today
+                            user_images_dir.mkdir(parents=True, exist_ok=True)
+
+                            # Generate a new filename for the user's image
+                            user_image_path = user_images_dir / f"{entry['name']}_{entry['phone']}.jpg"
+
+                            # Move the image back to the user_images folder
+                            os.rename(entry["image_path"], user_image_path)
+                        except Exception as e:
+                            st.error(f"Error moving image back to user folder: {str(e)}")
+                            st.stop()
+                    else:
+                        st.error("User image not found in blacklist folder")
+                        st.stop()
+
+                    # Restore user data to registered lists
                     data["names"].append(entry["name"])
                     data["phones"].append(entry["phone"])
-                    data["emails"].append(entry["email"])
+                    data["emails"].append(entry.get("email", None))  # Use .get() to handle missing email
                     data["encodings"].append(data["blacklist"][meta_index])
+                    data["image_paths"].append(str(user_image_path))  # Update with the new user image path
+                else:
+                    # Handle visitor removal (move image back to visitor folder)
+                    if os.path.exists(entry["image_path"]):
+                        try:
+                            # Define the visitor folder path
+                            today = datetime.now().strftime("%Y-%m-%d")
+                            visitor_folder = Path("visitor_images") / today
+                            visitor_folder.mkdir(parents=True, exist_ok=True)
 
-                    # Restore image if exists
-                    if original_image_path and os.path.exists(original_image_path):
-                        restore_date = datetime.now().strftime("%Y-%m-%d")
-                        restore_dir = Path("user_images") / restore_date
-                        restore_dir.mkdir(parents=True, exist_ok=True)
-                        new_path = restore_dir / Path(original_image_path).name
-                        os.rename(original_image_path, new_path)
-                        data["image_paths"].append(str(new_path))
+                            # Generate a new filename for the visitor image
+                            visitor_image_path = visitor_folder / f"{entry['name']}_{entry['phone']}.jpg"
 
-                # Remove from blacklist
+                            # Move the image back to the visitor folder
+                            os.rename(entry["image_path"], visitor_image_path)
+                        except Exception as e:
+                            st.error(f"Error moving image: {str(e)}")
+                    else:
+                        st.error("Visitor image not found in blacklist folder")
+
+                # Remove from blacklist regardless of type
                 del data["blacklist_metadata"][meta_index]
                 del data["blacklist"][meta_index]
 
+                # Save the updated data
                 save_encodings(data)
                 update_blacklist_counts(data["blacklist_metadata"])
+                st.success(f"User {sel_name} has been removed from the blacklist!")
                 st.rerun()
             
             st.markdown("### Blacklisted Persons:")
@@ -486,7 +585,7 @@ def security_dashboard():
                 **Blacklisted**: {datetime.fromisoformat(entry.get('blacklisted_at', datetime.now().isoformat())).strftime('%Y-%m-%d %H:%M')}
                 """)
         else:
-            st.info("No blacklisted persons")
+            st.info("No blacklisted persons") # Refresh the page to reflect changes
     with st.expander("📊 Access Logs Analytics"):
         col1, col2, col3 = st.columns(3)
             
@@ -705,6 +804,7 @@ if st.session_state.pending_request:
             data["blacklist"].append(st.session_state.unrecognized_face)  # Store encoding
             data["blacklist_metadata"].append({  # Store metadata
                 "name": status["visitor_name"],
+                "email": None,
                 "image_path": str(blacklist_image_path),
                 "type": "visitor",
                 "phone": status["visitor_phone"]
@@ -714,7 +814,7 @@ if st.session_state.pending_request:
             st.session_state.pending_request = None
             st.session_state.capture = False
         else:
-            st.warning("Waiting for resident approval...")
+            st.warning("Waiting for resident approval...")	
             time.sleep(3)
             st.rerun()
 
